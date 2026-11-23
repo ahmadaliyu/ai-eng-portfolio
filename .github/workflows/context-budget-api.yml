@@ -1,0 +1,46 @@
+name: context-budget-api
+
+on:
+  push:
+    paths:
+      - "context-budget-api/**"
+      - ".github/workflows/context-budget-api.yml"
+  pull_request:
+    paths:
+      - "context-budget-api/**"
+      - ".github/workflows/context-budget-api.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: context-budget-api
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: context-budget-api/uv.lock
+
+      - name: Install Python
+        run: uv python install 3.14
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Format
+        run: uv run ruff format --check .
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Types
+        run: uv run mypy src tests
+
+      - name: Tests
+        run: uv run pytest -v
