@@ -35,3 +35,8 @@ extend-exclude = ["docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+# Name our own packages so import grouping doesn't depend on whether a module
+# exists yet (in TDD, tests import modules before they're written).
+known-first-party = ["context_budget_api", "tests"]
