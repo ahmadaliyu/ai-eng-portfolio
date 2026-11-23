@@ -36,3 +36,47 @@ def check_fit(
     tokens = count_tokens(counter, messages)
     remaining = budget - tokens
     return FitResult(fits=remaining >= 0, tokens=tokens, budget=budget, remaining=remaining)
+
+
+class CannotFitError(ValueError):
+    """Even after dropping everything droppable, the conversation is over budget."""
+
+
+@dataclass(frozen=True)
+class TrimResult:
+    messages: list[Message]
+    tokens: int
+    budget: int
+    dropped: int
+
+
+def trim_to_fit(
+    messages: Sequence[Message], counter: TokenCounter, context_window: int, reserve: int
+) -> TrimResult:
+    """Drop the oldest messages until the conversation fits.
+
+    System messages and the last message are protected and never dropped.
+    Returns a new list; the input is not modified.
+    """
+    budget = _budget(context_window, reserve)
+    costs = [counter.count_message(m) for m in messages]
+    total = sum(costs)
+    last = len(messages) - 1
+    protected = {i for i, m in enumerate(messages) if m.role == "system" or i == last}
+
+    dropped: set[int] = set()
+    for i in range(len(messages)):
+        if total <= budget:
+            break
+        if i not in protected:
+            dropped.add(i)
+            total -= costs[i]
+
+    if total > budget:
+        raise CannotFitError(
+            f"protected messages (system messages and the last message) need {total} tokens "
+            f"but the budget is {budget}"
+        )
+
+    kept = [m for i, m in enumerate(messages) if i not in dropped]
+    return TrimResult(messages=kept, tokens=total, budget=budget, dropped=len(dropped))
