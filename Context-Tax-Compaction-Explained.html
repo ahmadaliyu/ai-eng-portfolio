@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Context Tax, Explained Simply</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --accent: #c2541f;
+    --callout-bg: #fbf1ea; --note-bg: #f3f4f6; --note-bar: #59636e;
+    --border: #d8dee4; --th-bg: #f3f4f6; --code-bg: #eff1f3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16181c; --fg: #e6e8eb; --muted: #9aa3ad; --accent: #f08a4b;
+      --callout-bg: #2a1f19; --note-bg: #22252a; --note-bar: #9aa3ad;
+      --border: #343a42; --th-bg: #22252a; --code-bg: #2a2e34;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 780px; margin: 0 auto; padding: 48px 16px 80px; }
+  h1 { font-size: 2.2rem; line-height: 1.2; margin: 0 0 .4rem; }
+  .sub { color: var(--muted); margin: 0 0 2rem; }
+  h2 { color: var(--accent); font-size: 1.4rem; margin: 2.4rem 0 .6rem; }
+  h3 { font-size: 1.1rem; margin: 1.6rem 0 .4rem; }
+  .callout {
+    background: var(--callout-bg); border-left: 5px solid var(--accent);
+    padding: 14px 18px; border-radius: 4px; margin: 1.2rem 0;
+  }
+  .callout p { margin: 0; }
+  ul { padding-left: 1.3rem; }
+  li { margin: .3rem 0; }
+  .table-wrap { overflow-x: auto; margin: 1rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .95rem; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--th-bg); border-bottom: 2px solid var(--muted); }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--muted); font-size: .85rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>The Context Tax, Explained Simply</h1>
+  <p class="sub">A plain-language summary of <em>The Context Tax: When to Compact Your Coding Agent</em> by Rogerio Chaves (August 2, 2026), based on 2,451 agent sessions, 287,748 API calls and 873 compactions.</p>
+
+  <div class="callout"><p><strong>In one sentence:</strong> a huge context window feels like a free upgrade, but you pay to re-read <em>all</em> of it on every step while the agent only uses a tiny slice. Compact somewhere around <strong>250k to 450k tokens</strong>, start helper agents fresh, and keep some recent history word-for-word when you compact.</p></div>
+
+  <h2>1. The basic idea</h2>
+  <p>A coding agent like Claude Code keeps a running memory of the whole conversation: your messages, the files it read, the commands it ran and their output. That memory is the <strong>context window</strong>, measured in <strong>tokens</strong> (roughly word-pieces).</p>
+  <p><strong>Compacting</strong> replaces that long history with a short summary, so the agent can start fresh but still know roughly what is going on. The blog asks one question: <em>when should you compact?</em></p>
+
+  <h2>2. Why big contexts get expensive fast</h2>
+  <p>This is the point most people miss: <strong>every time the agent does anything, it re-reads its entire memory.</strong></p>
+  <p>Picture a student who, before writing each new sentence of an essay, rereads every page of notes from the start. With 10 pages that is cheap. With 500 pages every sentence is expensive, even though only one sentence is being added.</p>
+  <p>If an agent sits at 500k tokens and runs 25 commands (tests, lint and so on), you pay for 25 × 500k tokens, not 500k once. In the author's data, running the test suite once cost about <strong>568,000 tokens</strong> before any test actually ran.</p>
+  <p><strong>Caching</strong> makes re-reading about 10× cheaper per token, but you still pay on every single step, so it does not fix the underlying problem. Cached reads were 95% of all tokens on the author's worst day.</p>
+
+  <h3>The "6× per doubling" rule</h3>
+  <p>Each time the context doubles, the total cost of getting there goes up about <strong>6×</strong> (a power law with exponent about 2.55).</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Context size reached</th><th>Median total tokens spent to get there</th></tr></thead>
+    <tbody>
+      <tr><td>100k</td><td>about 1.4 million</td></tr>
+      <tr><td>200k</td><td>about 9 million</td></tr>
+      <tr><td>800k</td><td>about 338 million (250× the cost of 100k, for 8× the window)</td></tr>
+    </tbody>
+  </table></div>
+  <p>Very small windows are wasteful too: below about 50k the agent has not gathered enough to produce anything substantial. The most efficient point for tokens read per token written was around 75k. So there is both a floor and a ceiling.</p>
+
+  <h2>3. The disaster that started it all</h2>
+  <p>The author burned <strong>2.25 billion tokens in one day</strong> and kept hitting usage limits. Two <strong>forked subagents</strong> caused about half of it. A forked subagent is a helper agent that starts with a full copy of the parent's memory instead of a clean slate.</p>
+  <ul>
+    <li>A fresh helper starts at about <strong>30k</strong> tokens.</li>
+    <li>These two started at <strong>523k and 304k</strong>, ran for 8 to 10 hours, and one peaked at nearly <strong>1M</strong> tokens.</li>
+    <li>One ran 1,112 shell commands, each re-reading the whole window.</li>
+  </ul>
+  <div class="callout"><p><strong>Lesson:</strong> give helper agents a fresh start and a short brief instead of a copy of a huge context. Also, how many steps a task takes is close to unpredictable (median 20 calls, but the worst took 1,545), and whatever size you start an agent at gets multiplied by that.</p></div>
+
+  <h2>4. Is all that memory actually useful?</h2>
+  <p>Mostly no. An AI judge checked which parts of the memory the agent actually used at each step:</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Typical context size</th><th>Part actually used</th><th>Share</th></tr></thead>
+    <tbody>
+      <tr><td>about 39k</td><td>about 8k</td><td>about 47%</td></tr>
+      <tr><td>about 645k</td><td>about 8.5k</td><td>about 2.5%</td></tr>
+    </tbody>
+  </table></div>
+  <p>The memory grew <strong>16×</strong> while the useful part stayed about the same size. Most of a giant context is dead weight you keep paying to re-read.</p>
+  <p>The judges also asked whether a summary would have worked instead of the original text. For <strong>85%</strong> of steps it would. The exact original mattered mainly when the agent had to copy something character-for-character, such as the search text of a code edit or a literal connection string. Decisions, constraints and findings survived a summary fine.</p>
+
+  <h2>5. The catch: compaction makes the agent worse for a while</h2>
+  <p>If big contexts are wasteful, why not compact all the time? Because right after a compaction the agent goes through a <strong>post-compaction fog</strong>:</p>
+  <ul>
+    <li>It re-reads files and re-learns things it used to know (about 28 steps of rediscovery).</li>
+    <li>It makes worse decisions. In the first 5 steps after a compaction, the author corrected the agent <strong>2.4× more often</strong> (42% of messages vs. 18% normally).</li>
+    <li>The effect lasts 30 to 100+ steps, even though tool errors stay flat: the commands still work, but the choices behind them get worse.</li>
+  </ul>
+  <p>Compaction today is brutal: a typical one squeezes <strong>575k tokens down to about 4k</strong>, so less than 1% survives, and it takes about 2.5 minutes.</p>
+  <div class="callout"><p>Compact too often and you are nearly always in the fog (about 29% of steps at a 220k threshold vs. 9% at 577k). Compact too rarely and you pay a fortune to re-read junk. The goal is the sweet spot in between. When unsure, <strong>err on compacting a little late</strong>: compacting too early hurts more than compacting too late.</p></div>
+
+  <h2>6. The recommendation</h2>
+  <p>Compact somewhere between about <strong>250k and 450k tokens</strong>, depending on the kind of work:</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Kind of work</th><th>Compact around</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Driving a PR to merge</td><td>200k – 250k</td><td>Barely needs old details (2% needed the exact text)</td></tr>
+      <tr><td>Research</td><td>250k – 300k</td><td>Tasks are self-contained</td></tr>
+      <tr><td>QA / testing</td><td>250k – 350k</td><td>Old results go stale quickly</td></tr>
+      <tr><td>Building features</td><td>300k – 450k</td><td>Needs exact text for edits</td></tr>
+      <tr><td>Understanding code</td><td>300k – 450k</td><td>Knowledge builds up over time</td></tr>
+    </tbody>
+  </table></div>
+  <ul>
+    <li><strong>Below about 200k:</strong> too much of your time is spent in the fog.</li>
+    <li><strong>Above about 600k:</strong> you pay a big premium for no measurable benefit.</li>
+    <li><strong>Near 1M:</strong> the author found no justification at all.</li>
+  </ul>
+
+  <h2>7. Two bigger levers than the threshold</h2>
+  <ul>
+    <li><strong>Better compaction.</strong> Keep the last 30k to 60k tokens word-for-word plus a summary of the rest, instead of a tiny 4k summary. In the author's model, a 350k threshold with a 60k preserved tail costs 25% less than a 600k threshold with a plain summary.</li>
+    <li><strong>Where helper agents start.</strong> Start subagents fresh (about 30k) instead of forking them from a loaded parent.</li>
+  </ul>
+
+  <h2>8. Honest caveats</h2>
+  <ul>
+    <li>It is one person's usage on one codebase; exact numbers will differ, but the general patterns (power-law cost, flat useful context, post-compaction spike) probably carry over.</li>
+    <li>The correction-rate finding may be partly inflated, because people often compact when things are already going badly.</li>
+    <li>The cost of a bug that slips through because of compaction (engineer time, customer trust) is not in the data. If that cost is high enough, a larger window might still be worth it.</li>
+  </ul>
+
+  <h2>9. Quick glossary</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>Token</td><td>A chunk of text, roughly a word-piece. Models are billed per token.</td></tr>
+      <tr><td>Context window</td><td>Everything the model sees on a given request: the whole conversation so far.</td></tr>
+      <tr><td>Compaction</td><td>Replacing the conversation with a summary to shrink the window.</td></tr>
+      <tr><td>Caching</td><td>Reusing already-processed text at a lower price. Cheaper, but still paid every step.</td></tr>
+      <tr><td>Subagent</td><td>A helper agent the main agent spawns to do one task.</td></tr>
+      <tr><td>Forked subagent</td><td>A subagent that starts with a full copy of the parent's context.</td></tr>
+      <tr><td>Power law</td><td>A curve where cost grows much faster than size (here about 6× per doubling).</td></tr>
+    </tbody>
+  </table></div>
+
+  <footer>The Context Tax, Explained Simply</footer>
+</main>
+</body>
+</html>

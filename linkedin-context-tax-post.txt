@@ -1,0 +1,190 @@
+LINKEDIN ARTICLE
+================
+
+TITLE:
+Why Your AI Coding Agent Gets More Expensive the Longer It Works (and When to Hit Reset)
+
+SUBTITLE:
+What 2,451 real agent sessions show about the hidden cost of "bigger memory," explained in plain English.
+
+---
+
+AI coding agents such as Claude Code, Cursor and Copilot can now remember huge amounts of information in a single session. Bigger memory sounds like a free upgrade. More memory should mean a smarter assistant, right?
+
+Not quite. I recently read a study by Rogerio Chaves called "The Context Tax: When to Compact Your Coding Agent." He analysed 2,451 of his own agent sessions, 287,748 requests to the AI model and 873 memory resets. His conclusion surprised me: past a certain point, more memory mostly means a much bigger bill and very little extra benefit.
+
+In this article I'll walk through what he found, step by step, with no prior AI knowledge needed. By the end you'll know:
+
+1. Why AI agents get more expensive the longer they run
+2. Why most of what they "remember" is useless
+3. Why resetting their memory too often is also a mistake
+4. When to reset, and the two habits that save the most
+
+
+PART 1: THREE TERMS YOU NEED (IN PLAIN ENGLISH)
+
+Token: AI models read and write text in small chunks called tokens. A token is roughly a piece of a word. You pay per token, so tokens are the unit of cost.
+
+Context window: this is the agent's working memory. It holds everything from the current session: your instructions, the files it opened, the commands it ran and their results. It keeps growing as the agent works.
+
+Compaction: when the memory gets too big, the agent can replace the whole history with a short summary and carry on from there. Think of it as clearing a cluttered desk and leaving one page of notes.
+
+The question the study answers is simple: when is the right time to compact?
+
+
+PART 2: THE HIDDEN COST: THE AGENT RE-READS EVERYTHING, EVERY TIME
+
+This is the single most important idea, and most people miss it.
+
+An AI agent doesn't remember the way people do. Every time it takes a step (reading a file, running a test, making an edit), the whole memory is sent to the model again from the start.
+
+Picture a student writing an essay who, before every new sentence, re-reads all of their notes from page one. With 10 pages of notes that's fine. With 500 pages, every new sentence becomes slow and expensive, even though only one sentence is being added.
+
+Here's what that looks like in numbers:
+
+• An agent holding 500,000 tokens of memory that runs 25 commands doesn't pay for 500,000 tokens. It pays for 25 × 500,000 = 12.5 million.
+• In the study, running the test suite once cost about 568,000 tokens before a single test ran, just to re-read the memory.
+
+"Doesn't caching fix this?" Caching (reusing text the model has already processed) makes each re-read about 10 times cheaper. But you still pay on every step. On the author's most expensive day, cached re-reads made up 95% of all tokens used.
+
+
+PART 3: COSTS GROW MUCH FASTER THAN MEMORY
+
+Because the agent re-reads more and more on every step, cost doesn't grow in a straight line. The study found that each time the memory doubles, the total cost of getting there rises about 6 times.
+
+Typical total tokens spent to reach each memory size:
+
+• 100,000 tokens of memory → about 1.4 million tokens spent
+• 200,000 tokens of memory → about 9 million tokens spent
+• 800,000 tokens of memory → about 338 million tokens spent
+
+So 8 times more memory cost about 250 times more.
+
+(Very small memories are wasteful too. Below about 50,000 tokens the agent hasn't gathered enough information to do substantial work. There is a floor as well as a ceiling.)
+
+
+PART 4: MOST OF THAT MEMORY ISN'T EVEN USED
+
+Paying more would be fine if the agent used all that memory. So the author checked which parts it actually relied on at each step.
+
+• With about 39,000 tokens of memory, the agent used about 8,000 of them (around 47%).
+• With about 645,000 tokens of memory, it used about 8,500 (around 2.5%).
+
+The memory grew 16 times larger, but the useful part stayed about the same size. The rest is dead weight you keep paying to re-read.
+
+He also asked whether a short summary could have replaced the original text. For 85% of steps, the answer was yes. The exact original mattered mainly when the agent had to copy something character for character, such as the precise line of code it was editing. Decisions, goals and findings survived a summary fine.
+
+
+PART 5: SO WHY NOT RESET ALL THE TIME? THE "POST-COMPACTION FOG"
+
+If big memory is wasteful, why not compact constantly? Because resetting has a real cost too.
+
+Think of a colleague coming back from a two-week holiday with only a sticky note about what happened while they were away. They can work, but for a while they ask questions, re-check files and make choices you have to correct.
+
+The study found the same pattern in agents:
+
+• After a compaction the agent spent around 28 steps re-reading files and re-learning things it already knew.
+• In the first 5 steps after a compaction, the author had to correct the agent 2.4 times more often (42% of messages, compared with 18% normally).
+• The effect lasted 30 to 100+ steps. The commands still ran fine; the decisions behind them got worse.
+
+Part of the reason is that today's compaction is extreme. A typical one squeezes about 575,000 tokens into roughly 4,000, so less than 1% survives.
+
+So there's a balance to strike:
+
+• Compact too often, and the agent spends much of its time in the fog.
+• Compact too rarely, and you pay a fortune to re-read junk.
+
+
+PART 6: THE SWEET SPOT: COMPACT AT 250K TO 450K TOKENS
+
+Based on the data, the best moment to compact is when memory reaches about 250,000 to 450,000 tokens, depending on the kind of work:
+
+• Getting a pull request reviewed and merged: 200k to 250k (old details are rarely needed)
+• Research tasks: 250k to 300k (each task stands on its own)
+• Testing and QA: 250k to 350k (old test results go stale quickly)
+• Building new features: 300k to 450k (exact code text matters for edits)
+• Learning an unfamiliar codebase: 300k to 450k (understanding builds over time)
+
+Quick rules of thumb:
+
+• Below about 200k, you spend too much time in the fog.
+• Above about 600k, you pay a big premium for no measurable benefit.
+• Near 1 million, the author found no justification at all.
+• When unsure, compact a little late rather than early. Early hurts more.
+
+
+PART 7: THE STORY THAT STARTED IT ALL: 2.25 BILLION TOKENS IN ONE DAY
+
+The author started this research after burning 2.25 billion tokens in a single day and repeatedly hitting usage limits.
+
+About half of that came from two "forked subagents." A subagent is a helper the main agent creates to handle one task. A forked subagent starts with a full copy of the main agent's memory instead of a clean slate.
+
+Imagine hiring a contractor to fix one tap and handing them your entire email archive instead of a one-page brief. That's what happened:
+
+• A fresh helper normally starts with about 30,000 tokens.
+• These two started with 523,000 and 304,000 tokens.
+• They ran for 8 to 10 hours, and one grew to nearly 1 million tokens.
+• One ran 1,112 commands, re-reading its entire memory every time.
+
+There's a second lesson here. The number of steps a task needs is close to unpredictable. The typical task took 20 steps; the worst took 1,545. Whatever memory size an agent starts with gets multiplied by that number.
+
+
+PART 8: WHAT TO ACTUALLY DO
+
+If you use AI coding agents, here's the practical version:
+
+1. Watch the memory size. Most tools show how full the context is. Treat it like a meter that's running, not free storage.
+
+2. Compact in the 250k to 450k range. Use the lower end for focused, short-lived tasks and the higher end for building features or learning a codebase.
+
+3. Start helper agents fresh. Give them a short, clear brief rather than a copy of a huge conversation. The study suggests this is a bigger saving than choosing the right compaction point.
+
+4. Keep recent work word for word when compacting. Keeping the last 30k to 60k tokens exactly, plus a summary of the rest, avoids much of the fog. In the author's model, compacting at 350k with a 60k preserved tail cost 25% less than compacting at 600k with a plain summary.
+
+5. Don't reset at the first sign of a long session. Compacting too early hurts more than compacting a bit late.
+
+
+HONEST CAVEATS
+
+• This is one person's usage on one codebase. Your exact numbers will differ, though the overall patterns (fast-rising cost, a flat amount of useful memory, the post-compaction dip) are likely to hold.
+• People often compact when things are already going badly, so the jump in corrections may be partly overstated.
+• The study doesn't measure the cost of a bug that slips through because the agent forgot something. If mistakes are very costly in your work, a larger memory may still be worth paying for.
+
+
+THE BIG TAKEAWAY
+
+An AI agent's memory isn't free storage. It's a bill you pay again on every single step.
+
+Bigger isn't automatically better. The smartest setup is a memory that's big enough to do the job, reset at the right moment, and paired with helpers that start fresh.
+
+I'm currently building AI agents myself, and this changed how I think about designing them. I'd love to hear from others: how do you manage your agent's memory? Do you reset it manually, let the tool handle it, or just let it run?
+
+Credit: based on "The Context Tax: When to Compact Your Coding Agent" by Rogerio Chaves (August 2026).
+
+#AIEngineering #AIAgents #LLM #ContextEngineering #ClaudeCode #GenerativeAI #SoftwareEngineering
+
+
+================================================================
+SHORT POST TO SHARE THE ARTICLE
+================================================================
+
+Your AI coding agent re-reads its entire memory every time it takes a step.
+
+That one fact explains why long sessions get so expensive, so fast.
+
+I broke down a study of 2,451 real agent sessions (by Rogerio Chaves) into plain English:
+
+→ Double the memory, and the cost rises about 6×
+→ At large sizes, the agent uses only about 2.5% of what it re-reads
+→ But resetting too often makes it forget and make mistakes (2.4× more corrections)
+→ The sweet spot: reset at around 250k to 450k tokens
+
+One person burned 2.25 billion tokens in a day, half of it from two helper agents that were handed a full copy of a huge memory instead of a short brief.
+
+The full article explains each idea step by step, with no AI background needed, and ends with 5 practical habits.
+
+👇 Read it here: [link to your article]
+
+How do you manage your agent's memory?
+
+#AIEngineering #AIAgents #LLM #ClaudeCode

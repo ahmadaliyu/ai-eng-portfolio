@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dive into Claude Code</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --accent: #b5501f;
+    --callout-bg: #f6e9e3; --note-bg: #f3f4f6; --note-bar: #59636e;
+    --border: #d8dee4; --th-bg: #f3f4f6; --code-bg: #eff1f3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16181c; --fg: #e6e8eb; --muted: #9aa3ad; --accent: #f08a4b;
+      --callout-bg: #2a1f19; --note-bg: #22252a; --note-bar: #9aa3ad;
+      --border: #343a42; --th-bg: #22252a; --code-bg: #2a2e34;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 860px; margin: 0 auto; padding: 48px 16px 80px; }
+  h1 { font-size: 2.1rem; line-height: 1.2; margin: 0 0 .5rem; }
+  .sub { color: var(--muted); margin: 0 0 1.6rem; }
+  h2 { font-size: 1.4rem; margin: 2.6rem 0 .8rem; padding-bottom: .3rem; border-bottom: 3px solid var(--accent); }
+  h3 { color: var(--accent); font-size: 1.08rem; margin: 1.5rem 0 .4rem; }
+  .callout {
+    background: var(--callout-bg); border-left: 5px solid var(--accent);
+    padding: 14px 20px; border-radius: 4px; margin: 1.2rem 0;
+  }
+  .callout h3 { color: var(--fg); margin-top: .2rem; font-size: 1.25rem; }
+  .note {
+    background: var(--note-bg); border-left: 5px solid var(--note-bar);
+    padding: 12px 18px; border-radius: 4px; margin: 1.2rem 0;
+  }
+  .note p, .callout p { margin: 0; }
+  ul, ol { padding-left: 1.4rem; }
+  li { margin: .3rem 0; }
+  code {
+    font: .86em ui-monospace, SFMono-Regular, Consolas, monospace;
+    background: var(--code-bg); padding: 1px 5px; border-radius: 4px;
+  }
+  .table-wrap { overflow-x: auto; margin: 1rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .93rem; }
+  th, td { text-align: left; padding: 9px 10px; border: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--th-bg); }
+  td:first-child { font-weight: 600; }
+  table.plain td:first-child { font-weight: normal; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--muted); font-size: .85rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Dive into Claude Code: The Design Space of Today's and Future AI Agent Systems</h1>
+  <p class="sub">Summary of arXiv 2604.14228v3 (Liu, Zhao, Shang, Shen — VILA Lab, MBZUAI), 55 pages. Covers every section except the reference list.</p>
+
+  <div class="callout">
+    <h3>The short version</h3>
+    <ol>
+      <li><strong>The core of Claude Code is a simple <code>while</code> loop</strong>: call the model, run the tools it asks for, repeat until it answers with text only. Only about <strong>1.6%</strong> of the code is "AI decision logic". The other <strong>98.4%</strong> is the harness around it: permissions, context management, extensions, subagents and persistence.</li>
+      <li><strong>The bet is "minimal scaffolding, maximal harness."</strong> Claude Code doesn't force the model through planners or state graphs the way LangGraph or Devin do. It gives the model freedom and surrounds it with deterministic infrastructure. <strong>The model decides, and the harness enforces.</strong></li>
+      <li><strong>The context window is the scarce resource</strong> (200K, or 1M for the 4.6 series). A lot of the design exists to save it: a 5-layer compaction pipeline, lazy-loaded instructions, deferred tool schemas, and subagents that return only a summary.</li>
+      <li><strong>Safety is deny-first and layered.</strong> There are 7 permission modes and 7 independent safety layers. This exists because <strong>users approve 93% of permission prompts</strong>, so you can't rely on a human clicking "yes" carefully.</li>
+      <li><strong>The paper's main criticism:</strong> the architecture boosts short-term productivity but has almost nothing that protects <strong>long-term developer understanding</strong>, skills or codebase coherence.</li>
+    </ol>
+  </div>
+
+  <h2>1. What the paper is and how it was done</h2>
+  <ul>
+    <li><strong>Method:</strong> source-code analysis of Claude Code <strong>v2.1.88</strong>, taken from the publicly available npm package (about 1,884 files and 512K lines of TypeScript). It's compared with two open-source agents, <strong>OpenClaw</strong> and <strong>Hermes Agent</strong>.</li>
+    <li><strong>Evidence tiers.</strong> Know these if anyone challenges the paper's claims:
+      <ul>
+        <li><strong>Tier A:</strong> official Anthropic documentation. It shows intent, not necessarily implementation.</li>
+        <li><strong>Tier B:</strong> verified against specific files and functions. This is the strongest tier.</li>
+        <li><strong>Tier C:</strong> community analysis or inference. These claims are hedged.</li>
+      </ul>
+    </li>
+    <li><strong>Running example:</strong> the paper follows one task, "Fix the failing test in auth.test.ts", through every subsystem.</li>
+  </ul>
+
+  <h2>2. Five values and thirteen principles (Section 2)</h2>
+  <h3>The five human values behind the design</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Value</th><th>Meaning</th><th>Key evidence</th></tr></thead>
+    <tbody>
+      <tr><td>Human Decision Authority</td><td>The human has the final say: observe, approve, interrupt, audit. Authority runs Anthropic → operators → users.</td><td>93% approval rate led to defined boundaries (sandbox, classifier) instead of more prompts.</td></tr>
+      <tr><td>Safety, Security, Privacy</td><td>Protect the user even when they aren't paying attention.</td><td>The auto-mode threat model covers overeager behavior, honest mistakes, prompt injection and misalignment.</td></tr>
+      <tr><td>Reliable Execution</td><td>Do what was meant, stay coherent over long work, and verify.</td><td>Loop of gather context → act → verify. Agents tend to praise their own work, so generation should be separate from evaluation.</td></tr>
+      <tr><td>Capability Amplification</td><td>More output per unit of effort.</td><td>About 27% of Claude Code-assisted tasks would not have been attempted at all.</td></tr>
+      <tr><td>Contextual Adaptability</td><td>Fits your project, and trust grows over time.</td><td>Auto-approve rate rises from about 20% (under 50 sessions) to over 40% (750 sessions).</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>The thirteen design principles</h3>
+  <ol>
+    <li>Deny-first with human escalation</li>
+    <li>Graduated trust spectrum</li>
+    <li>Defense in depth</li>
+    <li>Externalized programmable policy (hooks and config)</li>
+    <li>Context as a scarce resource</li>
+    <li>Append-only durable state</li>
+    <li>Minimal scaffolding with a maximal harness</li>
+    <li>Values over rules</li>
+    <li>Composable extensibility through several mechanisms</li>
+    <li>Reversibility-weighted risk (lighter checks for read-only or reversible actions)</li>
+    <li>Transparent file-based memory</li>
+    <li>Isolated subagents</li>
+    <li>Graceful recovery</li>
+  </ol>
+
+  <h3>Three alternative design families the paper contrasts with</h3>
+  <ul>
+    <li>Rule or graph orchestration (LangGraph)</li>
+    <li>Container isolation (SWE-Agent, OpenHands)</li>
+    <li>Git rollback as the safety net (Aider)</li>
+  </ul>
+  <div class="note"><p><strong>The cross-cutting concern:</strong> long-term developer capability. It is <em>not</em> a design value in Claude Code, and the paper says so explicitly. For example, developers using AI scored <strong>17% lower on comprehension tests</strong>.</p></div>
+
+  <h2>3. Architecture overview (Section 3)</h2>
+  <h3>Four core design questions and Claude Code's answers</h3>
+  <ul>
+    <li><strong>Where does reasoning live?</strong> In the model. The harness executes. The model can only emit <code>tool_use</code> blocks, so even a compromised model can't override sandboxing or deny rules.</li>
+    <li><strong>How many execution engines?</strong> One: <code>queryLoop()</code> in <code>query.ts</code>. The CLI, headless <code>claude -p</code>, Agent SDK and IDE all share it. <code>QueryEngine</code> is only a wrapper for SDK and headless use. This is a common misconception the paper corrects.</li>
+    <li><strong>Default safety posture?</strong> Deny-first. Deny rules beat ask rules, ask rules beat allow rules, and anything unrecognized escalates to the user.</li>
+    <li><strong>Binding constraint?</strong> The context window.</li>
+  </ul>
+  <p><strong>Seven components:</strong> user, interfaces, agent loop, permission system, tools, state and persistence, execution environment.</p>
+  <p><strong>Five layers:</strong></p>
+  <ul>
+    <li><strong>Surface:</strong> CLI, SDK, IDE</li>
+    <li><strong>Core:</strong> the loop and compaction</li>
+    <li><strong>Safety/action:</strong> permissions, hooks, tools, sandbox, subagents</li>
+    <li><strong>State:</strong> context, memory, transcripts</li>
+    <li><strong>Backend:</strong> shell, MCP, remote execution</li>
+  </ul>
+
+  <h2>4. The agent loop (Section 4)</h2>
+  <h3>Each turn</h3>
+  <ol>
+    <li>Resolve settings.</li>
+    <li>Initialize one mutable <code>State</code> object.</li>
+    <li>Load messages since the last compaction boundary.</li>
+    <li>Run the <strong>5 context shapers</strong>.</li>
+    <li>Stream the model call.</li>
+    <li>Dispatch tools.</li>
+    <li>Pass each request through the permission gate.</li>
+    <li>Execute and append <code>tool_result</code>.</li>
+    <li>Stop if the response has no tool calls.</li>
+  </ol>
+  <h3>Tool execution</h3>
+  <ul>
+    <li><code>StreamingToolExecutor</code> starts running tools <em>while the model is still streaming</em>.</li>
+    <li>Reads run in parallel and writes are serialized.</li>
+    <li>If one Bash command fails, its sibling processes are aborted.</li>
+  </ul>
+  <h3>The five shapers, from cheapest to most aggressive</h3>
+  <ol>
+    <li><strong>Budget reduction:</strong> caps the size of each tool result.</li>
+    <li><strong>Snip:</strong> trims old history.</li>
+    <li><strong>Microcompact:</strong> cache-aware fine-grained compression.</li>
+    <li><strong>Context collapse:</strong> a <em>read-time projection</em>. The model sees a collapsed view, but the full history stays stored.</li>
+    <li><strong>Auto-compact:</strong> a full summary written by the model, used only if pressure is still too high.</li>
+  </ol>
+  <p>The idea is "lazy degradation": use the least disruptive fix first.</p>
+  <h3>Recovery mechanisms</h3>
+  <ul>
+    <li>Retry with a higher output-token limit, up to 3 times.</li>
+    <li>Reactive compaction after a "prompt too long" error, once per turn.</li>
+    <li>Streaming fallback.</li>
+    <li>A fallback model.</li>
+  </ul>
+  <p><strong>Stop conditions:</strong> no tool use, maxTurns reached, context overflow, a hook stops it, or the user aborts.</p>
+  <p><strong>Pattern:</strong> ReAct. It is reactive with no backtracking, trading search completeness for simplicity and latency.</p>
+
+  <h2>5. Permissions and safety (Section 5)</h2>
+  <h3>Seven modes, from most to least supervised</h3>
+  <div class="table-wrap"><table class="plain">
+    <thead><tr><th>Mode</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>plan</code></td><td>You approve the plan before anything executes.</td></tr>
+      <tr><td><code>default</code></td><td>Most actions ask for approval.</td></tr>
+      <tr><td><code>acceptEdits</code></td><td>Auto-approves edits and simple filesystem commands.</td></tr>
+      <tr><td><code>auto</code></td><td>An ML classifier decides.</td></tr>
+      <tr><td><code>dontAsk</code></td><td>Anything that would prompt is auto-denied.</td></tr>
+      <tr><td><code>bypassPermissions</code></td><td>Skips most prompts, but safety-critical checks still apply.</td></tr>
+      <tr><td><code>bubble</code></td><td>Internal only. A subagent escalates to the parent terminal.</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Seven safety layers — any one of them can block an action</h3>
+  <ol>
+    <li>Tool pre-filtering: denied tools are hidden from the model entirely.</li>
+    <li>Deny-first rules: a broad deny beats a narrow allow.</li>
+    <li>Mode constraints.</li>
+    <li>The auto-mode classifier (<code>yoloClassifier.ts</code>): a fast filter, then chain-of-thought.</li>
+    <li>Shell sandbox: filesystem and network isolation. <strong>Authorization and isolation are separate axes.</strong></li>
+    <li>Permissions are <strong>not restored on resume</strong>.</li>
+    <li>Hooks: PreToolUse and PermissionRequest.</li>
+  </ol>
+  <div class="note"><p><strong>A key behavior:</strong> a denial is treated as a <strong>routing signal, not a hard stop</strong>. The model gets the reason and tries a safer approach.</p></div>
+  <h3>Weaknesses the paper names</h3>
+  <ul>
+    <li>Commands with <strong>more than 50 subcommands</strong> fell back to a single generic prompt and skipped per-subcommand deny checks. Parsing them one by one froze the UI. Defense-in-depth fails when layers share failure modes, here performance.</li>
+    <li><strong>Pre-trust initialization CVEs</strong> (CVE-2025-59536, CVE-2026-21852): MCP servers and settings environment variables ran <em>before</em> the user accepted the trust dialog. The pipeline has a spatial order of checks but missed the <em>temporal</em> question of when each check becomes active.</li>
+    <li>A sandbox hostname null-byte bypass, with no CVE assigned.</li>
+    <li>All of these were patched.</li>
+  </ul>
+
+  <h2>6. Extensibility (Section 6)</h2>
+  <p><strong>Why four mechanisms instead of one? Each costs a different amount of context.</strong></p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Mechanism</th><th>Unique role</th><th>Context cost</th><th>Where it plugs in</th></tr></thead>
+    <tbody>
+      <tr><td>Hooks</td><td>Lifecycle interception (27 events)</td><td><strong>Zero</strong> by default</td><td>execute()</td></tr>
+      <tr><td>Skills</td><td>Domain instructions (<code>SKILL.md</code>)</td><td><strong>Low</strong> until invoked</td><td>assemble()</td></tr>
+      <tr><td>Plugins</td><td>Packaging and distribution (10 component types)</td><td>Medium</td><td>All three points</td></tr>
+      <tr><td>MCP</td><td>External tools</td><td><strong>High</strong> once schemas load</td><td>model() tool pool</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Three injection points in any agent loop</h3>
+  <ul>
+    <li><strong>assemble()</strong> controls what the model sees.</li>
+    <li><strong>model()</strong> controls what it can reach.</li>
+    <li><strong>execute()</strong> controls whether an action runs.</li>
+  </ul>
+  <p>This framing is worth remembering.</p>
+  <h3>Hooks in detail</h3>
+  <ul>
+    <li>27 event types, of which 5 are safety-related.</li>
+    <li>4 persisted command types: shell, LLM prompt, HTTP, and agent verifier.</li>
+  </ul>
+  <h3>Tool pool</h3>
+  <ul>
+    <li>Up to <strong>54 built-in tools</strong>: 19 always present and 35 conditional.</li>
+    <li>Built-in tools win over MCP tools with the same name.</li>
+    <li>The pool is assembled the same way everywhere by <code>assembleToolPool()</code>.</li>
+  </ul>
+
+  <h2>7. Context and memory (Section 7)</h2>
+  <p><strong>CLAUDE.md has four levels:</strong> managed (OS), user (<code>~/.claude</code>), project (checked into the repo), and local (gitignored).</p>
+  <ul>
+    <li>Files closer to the working directory load later and get more attention.</li>
+    <li>Files in subdirectories load <strong>lazily</strong>, only when the agent reads files there.</li>
+  </ul>
+  <div class="note"><p><strong>A key insight: CLAUDE.md is sent as a <em>user message</em>, not as the system prompt.</strong> So the model follows it <strong>probabilistically</strong>. Permission rules are the <strong>deterministic</strong> enforcement. The design separates guidance from enforcement on purpose.</p></div>
+  <h3>Memory retrieval</h3>
+  <ul>
+    <li>No embeddings and no vector database.</li>
+    <li>An LLM scans memory-file headers and picks <strong>up to 5 files</strong>.</li>
+    <li>The trade: transparency over retrieval precision.</li>
+  </ul>
+  <h3>Compaction</h3>
+  <ul>
+    <li>It only appends boundary and summary events. It never deletes lines from the transcript.</li>
+    <li>After compaction, plans, skills and running agents are re-announced, because compaction drops those attachment messages.</li>
+  </ul>
+
+  <h2>8. Subagents (Section 8)</h2>
+  <p><strong>Built-in types:</strong> Explore (read-only), Plan, general-purpose, Claude Code Guide, Verification, statusline-setup. Custom agents go in <code>.claude/agents/*.md</code>.</p>
+  <h3>Isolation modes</h3>
+  <ul>
+    <li>In-process (the default): a separate conversation, but the same files.</li>
+    <li>Git <strong>worktree</strong>: a separate copy of the repo, with no containers needed.</li>
+    <li>Remote: internal only.</li>
+  </ul>
+  <p><strong>What comes back:</strong> only the <strong>summary text</strong> returns to the parent. The full history is saved in a separate "sidechain" <code>.jsonl</code> file. This matters because agent teams use about <strong>7x the tokens</strong> of a normal session.</p>
+  <p><strong>Permission precedence:</strong> if the parent is in bypass, acceptEdits or auto mode, that wins over the subagent's own mode, because it reflects an explicit user decision.</p>
+  <p><strong>Agent teams coordinate through files:</strong> JSON inboxes with lockfiles, not a message broker. The trade is throughput for zero dependencies and easy debugging.</p>
+  <p><strong>SkillTool vs. AgentTool:</strong> a skill injects instructions into the <em>current</em> context. An agent <em>always</em> gets a new, isolated context.</p>
+
+  <h2>9. Persistence (Section 9)</h2>
+  <p><strong>Three separate channels:</strong></p>
+  <ul>
+    <li>Per-session JSONL transcripts.</li>
+    <li>Global <code>history.jsonl</code>, which holds only your prompts (it powers Up-arrow and Ctrl+R).</li>
+    <li>Subagent sidechain files.</li>
+  </ul>
+  <p><strong>Resume and fork replay the transcript but do not restore session permissions.</strong> This is deliberate: old trust decisions shouldn't carry into a context that may have changed.</p>
+  <p><strong>Checkpoints</strong> are only file snapshots for <code>--rewind-files</code>. They are not a general state store.</p>
+
+  <h2>10. Comparison with OpenClaw and Hermes (Section 10)</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th></th><th>Claude Code</th><th>OpenClaw</th><th>Hermes Agent</th></tr></thead>
+    <tbody>
+      <tr><td>What it is</td><td>Short-lived CLI coding tool</td><td>Always-running gateway daemon for WhatsApp, Slack, Telegram, etc.</td><td>One Python process whose role depends on how it's launched</td></tr>
+      <tr><td>Trust boundary</td><td>Between the <strong>model and the environment</strong> (per action)</td><td>At the <strong>gateway perimeter</strong> (identity, allowlists)</td><td>Per-action approval like Claude Code, shown on many surfaces like OpenClaw</td></tr>
+      <tr><td>The loop</td><td><strong>Is</strong> the center of the system</td><td>One component inside a gateway</td><td>A synchronous Python loop (90 iterations by default)</td></tr>
+      <tr><td>Extensions</td><td>Change one agent's context</td><td>Plugins extend the whole gateway (12 capability types)</td><td>5 surfaces, including swappable <strong>memory and model backends</strong></td></tr>
+      <tr><td>Memory</td><td>CLAUDE.md plus 5-layer compaction</td><td>Long-term memory, daily notes, "dreaming", hybrid vector search</td><td>Scans context files for prompt injection; SQLite with full-text search</td></tr>
+      <tr><td>Multi-agent</td><td>Delegation to subordinate subagents</td><td>Independent agents per channel, plus nested subagents (max depth 5)</td><td>3 child agents, depth 1, plus a SQLite Kanban work queue</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>Hermes safety detail:</strong> it has hard-coded blocked patterns (<code>rm -rf /</code>, <code>mkfs</code>, fork bombs) and 3 modes: manual, smart and off.</p>
+  <h3>Lessons from the comparison</h3>
+  <ul>
+    <li>The <em>questions</em> stay the same across systems. The <em>answers</em> depend on how each system is deployed.</li>
+    <li>The systems <strong>compose</strong> rather than compete. OpenClaw can host Claude Code through ACP, and Hermes can be both host and guest.</li>
+    <li>So the design space is <strong>layered</strong>, not a flat list of alternatives.</li>
+  </ul>
+
+  <h2>11. Discussion: the most quotable parts (Section 12)</h2>
+  <h3>The harness matters as much as the model</h3>
+  <ul>
+    <li>Changing only the harness moves one model's score by <strong>up to 18 points</strong> on long-horizon tasks.</li>
+    <li>The harness alone moves Fable 5's pass rates by <strong>10+ points</strong>.</li>
+  </ul>
+  <p><strong>Does a stronger model need less harness?</strong> Only the <em>decision scaffolding</em> (planning and control logic) shrinks.</p>
+  <ul>
+    <li>Safety, human authority and adaptability don't depend on how capable the model is.</li>
+    <li>Context is still finite, and tokens still cost money.</li>
+    <li>A stronger model is <em>riskier</em>, not safer.</li>
+  </ul>
+  <h3>Value tensions</h3>
+  <ul>
+    <li>Authority vs. safety: approval fatigue.</li>
+    <li>Safety vs. capability: the 50-subcommand fallback.</li>
+    <li>Adaptability vs. safety: MCP attack surface and the CVEs.</li>
+    <li>Proactivity vs. disruption: 12–18% more tasks done, but users dislike frequent interruptions.</li>
+    <li>Velocity vs. coherence.</li>
+  </ul>
+  <h3>Evidence on long-term costs (studies on adjacent tools, not Claude Code itself)</h3>
+  <ul>
+    <li>Developers were <strong>19% slower</strong> while <em>believing</em> they were 20% faster (an RCT with 16 developers).</li>
+    <li>Cursor adoption led to <strong>+40.7% code complexity</strong>, and the speed boost faded by month 3.</li>
+    <li>In 304K AI-written commits, about <strong>25% of the issues introduced persisted</strong>, and security issues persisted more.</li>
+    <li>An EEG study found weaker neural connectivity in LLM users.</li>
+    <li>Entry-level tech hiring fell <strong>25%</strong>.</li>
+  </ul>
+  <p><strong>The paper's prediction:</strong> the agent's limited view of the codebase plus isolated subagents will cause <strong>duplicated code and convention violations</strong>. Good local decisions can still produce poor global results.</p>
+  <p><strong>A Claude Code-specific finding:</strong> cleaner code didn't change pass rates, but it cut tokens by 7–8% and file revisits by 34%.</p>
+  <h3>Other limitations the paper flags</h3>
+  <ul>
+    <li>Compaction is mostly <strong>invisible</strong> to the user.</li>
+    <li>The four extension mechanisms interact in ways that are hard to predict.</li>
+    <li>Feature flags mean different builds behave differently.</li>
+  </ul>
+  <p><strong>KAIROS:</strong> a feature-flagged proactive background agent. It wakes on <code>&lt;tick&gt;</code> prompts, notices whether you're at the terminal, and uses a SleepTool for cost control (the prompt cache expires after 5 minutes). It's unconfirmed whether it's active in production.</p>
+  <h3>Three recurring design choices</h3>
+  <ol>
+    <li>Graduated layers instead of single mechanisms.</li>
+    <li>Append-only storage: auditability over query power.</li>
+    <li>Model judgment inside a deterministic harness.</li>
+  </ol>
+
+  <h2>12. Six open questions (Section 13)</h2>
+  <ol>
+    <li><strong>Silent failures and the observability/evaluation gap:</strong>
+      <ul>
+        <li>About 78% of AI failures are invisible.</li>
+        <li>89% of teams have observability, but only 52% run offline evaluation.</li>
+        <li>Should the harness itself contain an evaluator?</li>
+      </ul>
+    </li>
+    <li><strong>Cross-session persistence:</strong>
+      <ul>
+        <li>What belongs between static CLAUDE.md and a single session's transcript?</li>
+        <li>The paper mentions Claude Code's Projects beta as one step here.</li>
+      </ul>
+    </li>
+    <li><strong>The harness boundary:</strong> <em>where</em> it runs (managed or virtualized agents), <em>when</em> it acts (proactive), <em>what</em> it acts on (robots and the physical world), and <em>with whom</em> (multiple agents).</li>
+    <li><strong>Horizon scaling:</strong> from single sessions to work that spans weeks.
+      <ul>
+        <li>The paper says v2.1.154 added <strong>dynamic workflows</strong>: the model writes a JavaScript orchestration script that can fan out to up to 1,000 subagents, with intermediate results kept outside the model's context.</li>
+      </ul>
+    </li>
+    <li><strong>Governance:</strong>
+      <ul>
+        <li>EU rules (the GPAI Code of Practice).</li>
+        <li>Only 13.3% of agent systems publish safety cards.</li>
+        <li>The paper says a June 2026 US export-control order briefly pulled Fable 5 and Mythos 5 offline.</li>
+      </ul>
+    </li>
+    <li><strong>Long-term developer capability:</strong> can the system <em>measure and protect</em> human understanding? Right now the harness has no per-session signal for it.</li>
+  </ol>
+  <div class="note"><p><strong>Conclusion:</strong> the most important open question is not how to add more autonomy. It's <strong>how to preserve human capability over time</strong>, and the paper argues this should be a first-class design problem.</p></div>
+
+  <h2>How to be "better than the person who read it all"</h2>
+  <h3>Be critical, not only informed</h3>
+  <ul>
+    <li>The analysis is a <strong>single snapshot (v2.1.88)</strong> of code that leaked through npm. Feature flags mean you can't tell what is actually enabled in production.</li>
+    <li>The "1.6% decision logic" figure is <strong>Tier C</strong>: community-estimated, not verified.</li>
+    <li>The long-term-harm evidence comes from <strong>Cursor, Copilot and other tools</strong>, not Claude Code. The authors admit this.</li>
+    <li>The defense-in-depth argument assumes the layers fail independently. The paper's own CVE and 50-subcommand examples show they don't.</li>
+  </ul>
+  <h3>Useful lessons for your own coding agent</h3>
+  <ul>
+    <li>Keep the loop dumb and the harness smart.</li>
+    <li>Make denials feedback to the model, not crashes.</li>
+    <li>Run cheap context reduction before expensive summarization.</li>
+    <li>Have subagents return summaries, not full transcripts.</li>
+    <li>Separate soft guidance (prompt files) from hard enforcement (code rules).</li>
+    <li>Never let anything run before the user has accepted trust.</li>
+  </ul>
+
+  <footer>Source: Liu, Zhao, Shang, Shen. "Dive into Claude Code: The Design Space of Today's and Future AI Agent Systems." arXiv:2604.14228v3 [cs.SE], 10 Oct 2026. github.com/VILA-Lab/Dive-into-Claude-Code</footer>
+</main>
+</body>
+</html>
